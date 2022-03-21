@@ -52,7 +52,8 @@ lazy val allModules = Seq(
   aws.projectRefs,
   `aws-http4s`.projectRefs,
   `codegen-cli`.projectRefs,
-  dynamic.projectRefs
+  dynamic.projectRefs,
+  experiment.projectRefs
 ).flatten
 
 lazy val docs =
@@ -141,6 +142,20 @@ lazy val core = projectMatrix
   )
   .jvmPlatform(allJvmScalaVersions, jvmDimSettings)
   .jsPlatform(allJsScalaVersions, jsDimSettings)
+
+/**
+ * Smithy4s specific scalacheck integration.
+ */
+lazy val experiment = projectMatrix
+  .in(file("modules/experiment"))
+  .dependsOn(core)
+  .settings(
+    isCE3 := true,
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % "2.7.0"
+    )
+  )
+  .jvmPlatform(allJvmScalaVersions, jvmDimSettings)
 
 /**
  * Smithy4s specific scalacheck integration.
