@@ -42,8 +42,11 @@ trait Schematic[F[_]] {
 
   // collections
   def set[S](fs: F[S]): F[Set[S]]
+  def sparseSet[S](fs: F[S]): F[Set[Option[S]]]
   def list[S](fs: F[S]): F[List[S]]
+  def sparseList[S](fs: F[S]): F[List[Option[S]]]
   def map[K, V](fk: F[K], fv: F[V]): F[Map[K, V]]
+  def sparseMap[K, V](fk: F[K], fv: F[V]): F[Map[K, Option[V]]]
 
   // Other
   def suspend[A](f: Lazy[F[A]]): F[A]
@@ -86,10 +89,16 @@ object Schematic {
             enumeration(to, fromName, fromOrdinal)
           case SetSchema(_, _, member) =>
             set(apply(member))
+          case SparseSetSchema(_, _, member) =>
+            sparseSet(apply(member))
           case ListSchema(_, _, member) =>
             list(apply(member))
+          case SparseListSchema(_, _, member) =>
+            sparseList(apply(member))
           case MapSchema(_, _, key, value) =>
             map(apply(key), apply(value))
+          case SparseMapSchema(_, _, key, value) =>
+            sparseMap(apply(key), apply(value))
           case BijectionSchema(underlying, to, from) =>
             bijection(apply(underlying), to, from)
           case SurjectionSchema(underlying, to, from) =>

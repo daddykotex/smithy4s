@@ -48,9 +48,16 @@ class PassthroughSchematic[F[_]](schematic: Schematic[F]) extends Schematic[F] {
 
   def list[S](fs: F[S]): F[List[S]] = schematic.list(fs)
 
+  def sparseList[S](fs: F[S]): F[List[Option[S]]] = schematic.sparseList(fs)
+
   def set[S](fs: F[S]): F[Set[S]] = schematic.set(fs)
 
+  def sparseSet[S](fs: F[S]): F[Set[Option[S]]] = schematic.sparseSet(fs)
+
   def map[K, V](fk: F[K], fv: F[V]): F[Map[K, V]] = schematic.map(fk, fv)
+
+  def sparseMap[K, V](fk: F[K], fv: F[V]): F[Map[K, Option[V]]] =
+    schematic.sparseMap(fk, fv)
 
   def struct[S](fields: Vector[Field[F, S, _]])(
       const: Vector[Any] => S

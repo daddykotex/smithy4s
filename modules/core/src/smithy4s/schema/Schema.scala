@@ -37,8 +37,11 @@ sealed trait Schema[A]{
   def withId(newId: ShapeId) : Schema[A] = this match {
     case PrimitiveSchema(_, hints, tag) => PrimitiveSchema(newId, hints, tag)
     case s: ListSchema[a] => ListSchema(newId, s.hints, s.member).asInstanceOf[Schema[A]]
+    case s: SparseListSchema[a] => SparseListSchema(newId, s.hints, s.member).asInstanceOf[Schema[A]]
     case s: SetSchema[a] => SetSchema(newId, s.hints, s.member).asInstanceOf[Schema[A]]
+    case s: SparseSetSchema[a] => SparseSetSchema(newId, s.hints, s.member).asInstanceOf[Schema[A]]
     case s: MapSchema[k, v] => MapSchema(newId, s.hints, s.key, s.value).asInstanceOf[Schema[A]]
+    case s: SparseMapSchema[k, v] => SparseMapSchema(newId, s.hints, s.key, s.value).asInstanceOf[Schema[A]]
     case EnumerationSchema(_, hints, values, total) => EnumerationSchema(newId, hints, values, total)
     case StructSchema(_, hints, fields, make) => StructSchema(newId, hints, fields, make)
     case UnionSchema(_, hints, alternatives, dispatch) => UnionSchema(newId, hints, alternatives, dispatch)
@@ -50,8 +53,11 @@ sealed trait Schema[A]{
   def transformHintsLocally(f: Hints => Hints) : Schema[A] = this match {
     case PrimitiveSchema(shapeId, hints, tag) => PrimitiveSchema(shapeId, f(hints), tag)
     case s: ListSchema[a] => ListSchema(s.shapeId, f(s.hints), s.member).asInstanceOf[Schema[A]]
+    case s: SparseListSchema[a] => SparseListSchema(s.shapeId, f(s.hints), s.member).asInstanceOf[Schema[A]]
     case s: SetSchema[a] => SetSchema(s.shapeId, f(s.hints), s.member).asInstanceOf[Schema[A]]
+    case s: SparseSetSchema[a] => SparseSetSchema(s.shapeId, f(s.hints), s.member).asInstanceOf[Schema[A]]
     case s: MapSchema[k, v] => MapSchema(s.shapeId, f(s.hints), s.key, s.value).asInstanceOf[Schema[A]]
+    case s: SparseMapSchema[k, v] => SparseMapSchema(s.shapeId, f(s.hints), s.key, s.value).asInstanceOf[Schema[A]]
     case EnumerationSchema(shapeId, hints, values, total) => EnumerationSchema(shapeId, f(hints), values, total)
     case StructSchema(shapeId, hints, fields, make) => StructSchema(shapeId, f(hints), fields, make)
     case UnionSchema(shapeId, hints, alternatives, dispatch) => UnionSchema(shapeId, f(hints), alternatives, dispatch)
@@ -63,8 +69,11 @@ sealed trait Schema[A]{
   def transformHintsTransitively(f: Hints => Hints) : Schema[A] = this match {
     case PrimitiveSchema(shapeId, hints, tag) => PrimitiveSchema(shapeId, f(hints), tag)
     case s: ListSchema[a] => ListSchema(s.shapeId, f(s.hints), s.member.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
+    case s: SparseListSchema[a] => SparseListSchema(s.shapeId, f(s.hints), s.member.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
     case s: SetSchema[a] => SetSchema(s.shapeId, f(s.hints), s.member.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
+    case s: SparseSetSchema[a] => SparseSetSchema(s.shapeId, f(s.hints), s.member.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
     case s: MapSchema[k, v] => MapSchema(s.shapeId, f(s.hints), s.key.transformHintsTransitively(f), s.value.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
+    case s: SparseMapSchema[k, v] => SparseMapSchema(s.shapeId, f(s.hints), s.key.transformHintsTransitively(f), s.value.transformHintsTransitively(f)).asInstanceOf[Schema[A]]
     case EnumerationSchema(shapeId, hints, values, total) => EnumerationSchema(shapeId, f(hints), values.map(_.transformHints(f)), total)
     case StructSchema(shapeId, hints, fields, make) => StructSchema(shapeId, f(hints), fields.map(_.transformHintsLocally(f).mapK(Schema.transformHintsTransitivelyK(f))), make)
     case UnionSchema(shapeId, hints, alternatives, dispatch) => UnionSchema(shapeId, f(hints), alternatives.map(_.transformHintsLocally(f).mapK(Schema.transformHintsTransitivelyK(f))), dispatch)
@@ -89,8 +98,11 @@ sealed trait Schema[A]{
 object Schema {
   final case class PrimitiveSchema[P](shapeId: ShapeId, hints: Hints, tag: Primitive[P]) extends Schema[P]
   final case class ListSchema[A](shapeId: ShapeId, hints: Hints, member: Schema[A]) extends Schema[List[A]]
+  final case class SparseListSchema[A](shapeId: ShapeId, hints: Hints, member: Schema[A]) extends Schema[List[Option[A]]]
   final case class SetSchema[A](shapeId: ShapeId, hints: Hints, member: Schema[A]) extends Schema[Set[A]]
+  final case class SparseSetSchema[A](shapeId: ShapeId, hints: Hints, member: Schema[A]) extends Schema[Set[Option[A]]]
   final case class MapSchema[K, V](shapeId: ShapeId, hints: Hints, key: Schema[K], value: Schema[V]) extends Schema[Map[K, V]]
+  final case class SparseMapSchema[K, V](shapeId: ShapeId, hints: Hints, key: Schema[K], value: Schema[V]) extends Schema[Map[K, Option[V]]]
   final case class EnumerationSchema[E](shapeId: ShapeId, hints: Hints, values: List[EnumValue[E]], total: E => EnumValue[E]) extends Schema[E]
   final case class StructSchema[S](shapeId: ShapeId, hints: Hints, fields: Vector[SchemaField[S, _]], make: IndexedSeq[Any] => S) extends Schema[S]
   final case class UnionSchema[U](shapeId: ShapeId, hints: Hints, alternatives: Vector[SchemaAlt[U, _]], dispatch: U => Alt.SchemaAndValue[U, _]) extends Schema[U]
@@ -139,8 +151,11 @@ object Schema {
   private val placeholder: ShapeId = ShapeId("placeholder", "Placeholder")
 
   def list[A](a: Schema[A]): Schema[List[A]] = Schema.ListSchema(placeholder, Hints.empty, a)
+  def sparseList[A](a: Schema[A]): Schema[List[Option[A]]] = Schema.SparseListSchema(placeholder, Hints.empty, a)
   def set[A](a: Schema[A]): Schema[Set[A]] = Schema.SetSchema(placeholder, Hints.empty, a)
+  def sparseSet[A](a: Schema[A]): Schema[Set[Option[A]]] = Schema.SparseSetSchema(placeholder, Hints.empty, a)
   def map[K, V](k: Schema[K], v: Schema[V]): Schema[Map[K, V]] = Schema.MapSchema(placeholder, Hints.empty, k, v)
+  def sparseMap[K, V](k: Schema[K], v: Schema[V]): Schema[Map[K, Option[V]]] = Schema.SparseMapSchema(placeholder, Hints.empty, k, v)
   def recursive[A](s : => Schema[A]) : Schema[A] = Schema.LazySchema(Lazy(s))
 
   def union[U](alts: SchemaAlt[U, _]*)(dispatch: U => Alt.SchemaAndValue[U, _]): Schema.UnionSchema[U] =

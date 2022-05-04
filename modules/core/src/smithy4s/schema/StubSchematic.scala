@@ -57,9 +57,16 @@ trait StubSchematic[F[_]] extends Schematic[F] {
 
   override def list[S](fs: F[S]): F[List[S]] = default
 
+  override def sparseList[S](fs: F[S]): F[List[Option[S]]] = default
+
   override def set[S](fs: F[S]): F[Set[S]] = default
 
+  override def sparseSet[S](fs: F[S]): F[Set[Option[S]]] = default
+
   override def map[K, V](fk: F[K], fv: F[V]): F[Map[K, V]] = default
+
+  override def sparseMap[K, V](fk: F[K], fv: F[V]): F[Map[K, Option[V]]] =
+    default
 
   override def union[S](first: Alt[F, S, _], rest: Vector[Alt[F, S, _]])(
       total: S => Alt.WithValue[F, S, _]

@@ -47,11 +47,17 @@ object SchematicRepr extends Schematic[Repr] {
 
   def list[S](fs: String): String = s"list[$fs]"
 
+  def sparseList[S](fs: String): String = s"list[Option[$fs]]"
+
   def set[S](fs: String): String = s"set[$fs]"
 
-  def uuid: String = "uuid"
+  def sparseSet[S](fs: String): String = s"set[Option[$fs]]"
 
   def map[K, V](fk: String, fv: String): String = s"map[$fk, $fv]"
+
+  def sparseMap[K, V](fk: String, fv: String): String = s"map[$fk, Option[$fv]]"
+
+  def uuid: String = "uuid"
 
   def enumeration[A](
       to: A => (String, Int),
