@@ -240,6 +240,10 @@ private[codegen] class SmithyToIR(model: Model, namespace: String) {
       )
       val smithyNamespace = "smithy.api"
 
+      private def isSparse(s: Shape): Boolean = {
+        s.getTrait(classOf[SparseTrait]).isPresent()
+      }
+
       private def isUnboxedPrimitive(shapeId: ShapeId): Boolean =
         shapeId.getNamespace() == smithyNamespace && primitiveAliases.contains(
           shapeId.getName()
@@ -290,11 +294,14 @@ private[codegen] class SmithyToIR(model: Model, namespace: String) {
           Type.Alias(x.namespace, x.name, tpe)
         }
 
-      def mapShape(x: MapShape): Option[Type] = (for {
-        k <- x.getKey().accept(this)
-        v <- x.getValue().accept(this)
-      } yield Type.Map(k, v)).map { tpe =>
-        Type.Alias(x.namespace, x.name, tpe)
+      def mapShape(x: MapShape): Option[Type] = {
+        val maybeMap = for {
+          k <- x.getKey().accept(this)
+          v <- x.getValue().accept(this)
+        } yield Type.Map(k, v, isSparse(x))
+        maybeMap.map { tpe =>
+          Type.Alias(x.namespace, x.name, tpe)
+        }
       }
 
       def byteShape(x: ByteShape): Option[Type] =
