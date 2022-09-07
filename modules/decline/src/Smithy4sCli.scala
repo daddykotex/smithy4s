@@ -102,17 +102,16 @@ class Smithy4sCli[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _], F[_]: MonadThrow](
         ).mapN { (input, entrypoint) =>
           val printers = entrypoint.printerApi
           val printer = printers.printer(endpoint)
-          val FO = printer.printInput(input) *>
-            service.asTransformation[GenLift[F]#λ](entrypoint.interpreter)(
-              endpoint.wrap(input)
-            )
-
-          FO.flatMap(printer.printOutput)
-            .onError {
-              case e if endpoint.errorable.flatMap(_.liftError(e)).nonEmpty =>
-                printer
-                  .printError(e)
-            }
+          printer.printInput(input) *>
+            (service
+              .asTransformation[GenLift[F]#λ](entrypoint.interpreter)(
+                endpoint.wrap(input)
+              ): F[O])
+              .flatMap(printer.printOutput)
+              .onError {
+                case e if endpoint.errorable.flatMap(_.liftError(e)).nonEmpty =>
+                  printer.printError(e)
+              }
         }
       }
   }
