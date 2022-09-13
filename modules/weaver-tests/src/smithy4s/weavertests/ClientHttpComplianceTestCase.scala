@@ -30,34 +30,32 @@ import smithy4s.Document
 import smithy4s.http.PayloadError
 import smithy4s.Endpoint
 import smithy4s.Service
-import weaver._
+
+import ComplianceTest.ComplianceResult
 
 import java.nio.charset.StandardCharsets
 
 import concurrent.duration._
 import org.http4s.Response
+import smithy4s.ShapeTag
+import smithy4s.UnsupportedProtocolError
 
-/**
-  * Register unit test for client and server (when applicable) for @httpRequestTests
-  * annotations.
-  * 
-  * For HttpRequestTestCase:
-  * 1. The HttpRequestTestCase#params are used to generated an input, a dummy output is generated via the schema.
-  * 2. The server implementation is setup to a)return a dummy output, and b) record
-  *    the incoming request for assertion
-  * 3. This input is fed into a genuine client call (the operation under test). This client is hooked to the server setip at 2)
-  * 4. Assertion are performed on the recorded request
-  */
 class ClientHttpComplianceTestCase[
+    P,
     Alg[_[_, _, _, _, _]],
     Op[_, _, _, _, _]
 ](
-    getClient: Either[
-      HttpApp[IO] => Resource[IO, smithy4s.Monadic[Alg, IO]],
-      Int => Resource[IO, smithy4s.Monadic[Alg, IO]]
-    ]
-)(implicit service: Service[Alg, Op], ce: CompatEffect)
-    extends Expectations.Helpers {
+    protocol: P,
+    client: (
+        HttpApp[IO],
+        Uri
+    ) => Either[UnsupportedProtocolError, smithy4s.Monadic[Alg, IO]]
+)(implicit
+    service: Service[Alg, Op],
+    ce: CompatEffect,
+    protocolTag: ShapeTag[P],
+    assert: Asserter[IO]
+) {
   import ce._
   import org.http4s.implicits._
   private val baseUri = uri"http://localhost/"
@@ -65,14 +63,14 @@ class ClientHttpComplianceTestCase[
   private def matchRequest(
       request: Request[IO],
       testCase: HttpRequestTestCase
-  )(implicit loc: SourceLocation) = {
+  ): IO[ComplianceResult] = {
     val bodyAssert = testCase.body
       .map { expectedBody =>
         request.bodyText.compile.string.map { responseBody =>
           assert.eql(expectedBody, responseBody)
         }
       }
-      .getOrElse(success.pure[IO])
+      .getOrElse(assert.success.pure[IO])
 
     val headerAssert =
       testCase.headers
@@ -86,13 +84,13 @@ class ClientHttpComplianceTestCase[
                   assert.eql(value, actualValue)
                 }
                 .getOrElse(
-                  failure(s"Header $name was not found in the response.")
+                  assert.fail(s"Header $name was not found in the response.")
                 )
             }
             .toList
             .combineAll
         }
-        .getOrElse(success)
+        .getOrElse(assert.success)
 
     val expectedUri = baseUri
       .withPath(
@@ -129,15 +127,19 @@ class ClientHttpComplianceTestCase[
   }
 
   private[weavertests] def clientRequestTest[I, E, O, SE, SO](
+      getClient: Either[
+        HttpApp[IO] => Resource[IO, smithy4s.Monadic[Alg, IO]],
+        Int => Resource[IO, smithy4s.Monadic[Alg, IO]]
+      ],
       endpoint: Endpoint[Op, I, E, O, SE, SO],
-      testCase: HttpRequestTestCase,
-      inputFromDocument: Document.Decoder[I]
-  ): GeneratedTest = {
+      testCase: HttpRequestTestCase
+  ): ComplianceTest[IO] = {
     type R[I_, E_, O_, SE_, SO_] = IO[O_]
 
-    GeneratedTest(
+    val inputFromDocument = Document.Decoder.fromSchema(endpoint.input)
+    ComplianceTest[IO](
       name = endpoint.id.toString + "(client|request): " + testCase.id,
-      assertions = {
+      run = {
         val input = testCase.params
           .map { inputFromDocument.decode(_).liftTo[IO] }
           .getOrElse(IO.pure(().asInstanceOf[I]))
@@ -180,6 +182,36 @@ class ClientHttpComplianceTestCase[
         }
       }
     )
+  }
+
+  def allClientTests(
+      getClient: Either[
+        HttpApp[IO] => Resource[IO, smithy4s.Monadic[Alg, IO]],
+        Int => Resource[IO, smithy4s.Monadic[Alg, IO]]
+      ]
+  ): List[ComplianceTest[IO]] = {
+    service.endpoints.flatMap { case endpoint =>
+      endpoint.hints
+        .get(HttpRequestTests)
+        .map(_.value)
+        .getOrElse(Nil)
+        .filter(_.protocol == protocolTag.id.toString())
+        .filter(tc => tc.appliesTo.forall(_ == AppliesTo.CLIENT))
+        .map(tc => clientRequestTest(getClient, endpoint, tc))
+    }
+  }
+
+  def forApp(): Either[
+    HttpApp[IO] => Resource[IO, smithy4s.Monadic[Alg, IO]],
+    Int => Resource[IO, smithy4s.Monadic[Alg, IO]]
+  ] = {
+    import org.http4s.implicits._
+    val baseUri = uri"http://localhost/"
+    Left { (a: HttpApp[IO]) =>
+      Resource.pure[IO, smithy4s.Monadic[Alg, IO]](
+        client(a, baseUri).fold(err => sys.error(err.getMessage()), identity)
+      )
+    }
   }
 
   private val randomInt =
