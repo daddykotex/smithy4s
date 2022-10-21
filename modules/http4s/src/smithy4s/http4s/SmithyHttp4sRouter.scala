@@ -27,7 +27,6 @@ import smithy4s.http4s.internals.SmithyHttp4sServerEndpoint
 class SmithyHttp4sRouter[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _], F[_]](
     service: smithy4s.Service[Alg, Op],
     impl: Interpreter[Op, F],
-    errorTransformation: PartialFunction[Throwable, F[Throwable]],
     entityCompiler: EntityCompiler[F]
 )(implicit effect: EffectCompat[F]) {
 
@@ -49,8 +48,7 @@ class SmithyHttp4sRouter[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _], F[_]](
         SmithyHttp4sServerEndpoint(
           impl,
           ep,
-          compilerContext,
-          errorTransformation
+          compilerContext
         )
       }
       .collect { case Some(http4sEndpoint) =>

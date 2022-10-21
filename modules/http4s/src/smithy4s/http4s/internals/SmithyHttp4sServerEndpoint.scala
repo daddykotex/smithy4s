@@ -51,16 +51,14 @@ private[smithy4s] object SmithyHttp4sServerEndpoint {
   def apply[F[_]: EffectCompat, Op[_, _, _, _, _], I, E, O, SI, SO](
       impl: Interpreter[Op, F],
       endpoint: Endpoint[Op, I, E, O, SI, SO],
-      compilerContext: CompilerContext[F],
-      errorTransformation: PartialFunction[Throwable, F[Throwable]]
+      compilerContext: CompilerContext[F]
   ): Option[SmithyHttp4sServerEndpoint[F]] =
     HttpEndpoint.cast(endpoint).map { httpEndpoint =>
       new SmithyHttp4sServerEndpointImpl[F, Op, I, E, O, SI, SO](
         impl,
         endpoint,
         httpEndpoint,
-        compilerContext,
-        errorTransformation
+        compilerContext
       )
     }
 
@@ -71,8 +69,7 @@ private[smithy4s] class SmithyHttp4sServerEndpointImpl[F[_], Op[_, _, _, _, _], 
     impl: Interpreter[Op, F],
     endpoint: Endpoint[Op, I, E, O, SI, SO],
     httpEndpoint: HttpEndpoint[I],
-    compilerContext: CompilerContext[F],
-    errorTransformation: PartialFunction[Throwable, F[Throwable]],
+    compilerContext: CompilerContext[F]
 )(implicit F: EffectCompat[F]) extends SmithyHttp4sServerEndpoint[F] {
 // format: on
   import compilerContext._
@@ -92,7 +89,7 @@ private[smithy4s] class SmithyHttp4sServerEndpointImpl[F[_], Op[_, _, _, _, _], 
       output <- (impl(endpoint.wrap(input)): F[O])
     } yield output
 
-    run.recoverWith(transformError).attempt.flatMap {
+    run.attempt.flatMap {
       case Left(error)   => errorResponse(error)
       case Right(output) => successResponse(output)
     }
@@ -112,15 +109,6 @@ private[smithy4s] class SmithyHttp4sServerEndpointImpl[F[_], Op[_, _, _, _, _], 
   private implicit val httpContractErrorCodec
       : EntityEncoder[F, HttpContractError] =
     entityCompiler.compileEntityEncoder(HttpContractError.schema, entityCache)
-
-  private val transformError: PartialFunction[Throwable, F[O]] = {
-    case e @ endpoint.Error(_, _) => F.raiseError(e)
-    case scala.util.control.NonFatal(other)
-        if errorTransformation.isDefinedAt(other) =>
-      errorTransformation(other).flatMap(F.raiseError)
-  }
-
-
 
   // format: off
   private val extractInput: (Metadata, Request[F]) ==> I = {

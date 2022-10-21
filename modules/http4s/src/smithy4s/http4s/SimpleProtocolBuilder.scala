@@ -47,8 +47,7 @@ abstract class SimpleProtocolBuilder[P](val codecs: CodecAPI)(implicit
     val service = serviceProvider.service
     new RouterBuilder[Alg, Op, F](
       service,
-      service.asTransformation[GenLift[F]#λ](impl),
-      PartialFunction.empty
+      service.asTransformation[GenLift[F]#λ](impl)
     )
   }
 
@@ -81,8 +80,7 @@ abstract class SimpleProtocolBuilder[P](val codecs: CodecAPI)(implicit
     ): RouterBuilder[Alg, Op, F] =
       new RouterBuilder[Alg, Op, F](
         service,
-        service.asTransformation[GenLift[F]#λ](impl),
-        PartialFunction.empty
+        service.asTransformation[GenLift[F]#λ](impl)
       )
 
   }
@@ -122,8 +120,7 @@ abstract class SimpleProtocolBuilder[P](val codecs: CodecAPI)(implicit
       F[_]
   ] private[http4s] (
       service: smithy4s.Service[Alg, Op],
-      impl: Interpreter[Op, F],
-      errorTransformation: PartialFunction[Throwable, F[Throwable]]
+      impl: Interpreter[Op, F]
   )(implicit F: EffectCompat[F]) {
 
     val entityCompiler =
@@ -132,18 +129,37 @@ abstract class SimpleProtocolBuilder[P](val codecs: CodecAPI)(implicit
     def mapErrors(
         fe: PartialFunction[Throwable, Throwable]
     ): RouterBuilder[Alg, Op, F] =
-      new RouterBuilder(service, impl, fe andThen (e => F.pure(e)))
+      flatMapErrors(fe andThen (e => F.pure(e)))
 
     def flatMapErrors(
         fe: PartialFunction[Throwable, F[Throwable]]
-    ): RouterBuilder[Alg, Op, F] =
-      new RouterBuilder(service, impl, fe)
+    ): RouterBuilder[Alg, Op, F] = {
+      val errorTransformation =
+        new smithy4s.Interpreter[Op, F] {
+          def apply[I_, E_, O_, SE_, SO_](
+              op: Op[I_, E_, O_, SE_, SO_]
+          ): F[O_] = {
+            val (_, endpoint) = service.endpoint(op)
+            val total: PartialFunction[Throwable, F[O_]] = {
+              case e @ endpoint.Error(_, _) =>
+                F.raiseError(e)
+              case scala.util.control.NonFatal(other)
+                  if fe.isDefinedAt(other) =>
+                fe(other).flatMap(F.raiseError)
+            }
+            impl
+              .apply(op)
+              .recoverWith(total)
+          }
+        }
+      new RouterBuilder(service, errorTransformation)
+    }
+
     def make: Either[UnsupportedProtocolError, HttpRoutes[F]] =
       checkProtocol(service, protocolTag).as {
         new SmithyHttp4sRouter[Alg, Op, F](
           service,
           impl,
-          errorTransformation,
           entityCompiler
         ).routes
       }
